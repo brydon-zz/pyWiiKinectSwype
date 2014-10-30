@@ -1,4 +1,4 @@
-EyeSwype
+pyWiiKinectSwype
 ========
 
-A Swype-style keyboard input program using webcam-based eye tracking.
+Software that simulates swype-style input with the Microsoft Kinect and Nintendo Wiimote, written in Python
