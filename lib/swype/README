@@ -1,0 +1,12 @@
+Source for a swype app that I am building.
+
+To try it out, download the mouseTracker.tar.gz and unpack with:
+
+$ tar -xf mouseTracker.tar.gz
+
+This will create a new directory in you folder. Inside this freshly unzipped directory will be the program binary, mouseTracker. You can run it with:
+
+$ mouseTracker/mouseTracker
+
+
+To use the program, click down your mouse/trackpad once on the first lettor of your intended word. Then move the mouse/trackpad to complete your trajectory. When finished, cilck down once more to signal the termination of your sequence. Your terminal should display a list of words ordered descending by their respective scores. 
