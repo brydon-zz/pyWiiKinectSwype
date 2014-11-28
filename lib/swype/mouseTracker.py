@@ -6,9 +6,10 @@ import pickle
 import sys
 import re
 import analysis
+import time
 
 
-qwertyString = "qwertyuiopasdfghjklzxcvbnm"
+qwertyString = "QWERTYUIOPASDFGHJKLZXCVBNM"
 qwertyPositions = [(12, 74), (34, 72), (59, 76),
 (82, 75), (106, 75), (130, 77), (152, 74),
 (178, 75), (202, 75), (225, 75), (23, 113),
@@ -95,7 +96,9 @@ def main ():
         elif event.type == pygame.MOUSEBUTTONDOWN:
             linesToDraw = [event.pos]
             if recording:
+                stime = time.time()
                 analysis.AnalyzeTrajectory(trajectory)
+                print time.time()-stime
                 while True:
                     event = pygame.event.poll()
                     if event.type == pygame.MOUSEBUTTONDOWN:
