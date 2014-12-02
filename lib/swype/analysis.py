@@ -57,13 +57,15 @@ def AnalyzeTrajectory(trajectory):
     "Debug function to look at some basic data for each recorded trajectory"
     print "Analysing"
     letters = trajectory.GetLetterSequence()
-    substringWorked, _ = IsSubstring(Contract(trajectory.word), Contract(''.join(letters)))
-    print trajectory.word
-    print Contract(letters)
+    stime = time.time()
+    # substringWorked, _ = IsSubstring(Contract(trajectory.word), Contract(''.join(letters)))
     global mydict
     wordRankings = []
-
-    for word in myDict.GetMatches(Contract(letters)):
+    matches = myDict.GetMatches(Contract(letters))
+    print time.time() - stime
+    stime = time.time()
+    print matches
+    for word in matches:
         letterData = CollectTrajectoryData(trajectory, Contract(word))
         goodData = filter(lambda x: x.usedInWord, letterData)
         badData = filter(lambda x: not x.usedInWord, letterData)
@@ -75,6 +77,7 @@ def AnalyzeTrajectory(trajectory):
         score = goodDataTime * 1 + badDataTime * -1 + goodDataAngle * -2 + badDataAngle * 1 + len(Contract(word)) * (1 / 3.0)
         wordRank[1] = [goodDataTime, badDataTime, goodDataAngle, badDataAngle, score]
         wordRankings.append(wordRank)
+    print time.time() - stime
 
     top4words = []
     for wordRank in sorted(wordRankings, key=lambda x:-(x[1][-1]))[:10]:
@@ -82,6 +85,7 @@ def AnalyzeTrajectory(trajectory):
             top4words.append(wordRank[0])
         if len(top4words) == 4:
             break
+
     print top4words
     return top4words
 
