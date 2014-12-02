@@ -3,8 +3,6 @@ import pickle
 import pdb
 import numpy as np
 import dictionary
-import mouseTracker
-from mouseTracker import *
 from itertools import groupby
 from operator import attrgetter
 
@@ -57,13 +55,11 @@ def AnalyzeTrajectory(trajectory):
     "Debug function to look at some basic data for each recorded trajectory"
     print "Analysing"
     letters = trajectory.GetLetterSequence()
-    stime = time.time()
     # substringWorked, _ = IsSubstring(Contract(trajectory.word), Contract(''.join(letters)))
     global mydict
     wordRankings = []
     matches = myDict.GetMatches(Contract(letters))
-    print time.time() - stime
-    stime = time.time()
+
     print matches
     for word in matches:
         letterData = CollectTrajectoryData(trajectory, Contract(word))
@@ -77,7 +73,6 @@ def AnalyzeTrajectory(trajectory):
         score = goodDataTime * 1 + badDataTime * -1 + goodDataAngle * -2 + badDataAngle * 1 + len(Contract(word)) * (1 / 3.0)
         wordRank[1] = [goodDataTime, badDataTime, goodDataAngle, badDataAngle, score]
         wordRankings.append(wordRank)
-    print time.time() - stime
 
     top4words = []
     for wordRank in sorted(wordRankings, key=lambda x:-(x[1][-1]))[:10]:
