@@ -5,15 +5,60 @@ import pygame.locals
 import datetime
 import numpy as np
 import pickle
-import re
 import analysis
 import time
+import random
+import math
 
+if len(sys.argv) > 1:
+    partName = sys.argv[1]
+else:
+    partName = raw_input("Please enter participant number: ")
+
+textmode = raw_input("Enter the mode (KB,KS,WB,WS): ")
+
+logDir = "../logs/"
+
+WII_SWYPE = 1
+KIN_SWYPE = 2
+WII_BASIC = 3
+KIN_BASIC = 4
+
+if textmode == "KB":
+    mode = KIN_BASIC
+elif textmode == "KS":
+    mode = KIN_SWYPE
+elif textmode == "WB":
+    mode = WII_BASIC
+elif textmode == "WS":
+    mode = WII_SWYPE
+
+phrasesFile = open("phrases", "r")
+phrases = phrasesFile.read().upper().split("\r\n")
+phraseEntryTimes = []
+mouseLog = []
+wordEntryTimes = []
+totalWordsEntered = []
+
+phrasesFile.close()
+experimentStartTime = 0
+experimentRunning = False
+phrasesToEnter = []
+
+
+NUM_PHRASES_PER_TRIAL = 5
+openFileList = []
 drawPath = False
 backSpaceDrawn = False
+
+PHRASERECT_L = 50
+PHRASERECT_T = 50
+PHRASERECT_HEIGHT = 25
+PHRASERECT_WIDTH = 1000
+
 INTEXTSIZE = 24
 INPUTRECT_L = 50
-INPUTRECT_T = 50
+INPUTRECT_T = 100
 INPUTRECT_HEIGHT = 25
 INPUTRECT_WIDTH = 1000
 
@@ -34,11 +79,21 @@ oldhi = hi = -1
 BORDERWIDTH = 4
 TEXTSIZE = 150
 
-KEYSTARTY = 400
+KEYSTARTY = 275
 XOFFSET = KEYWIDTH / 2 + 100
+
+SPACEBAR_TLX = XOFFSET + 2 * (KEYWIDTH + 2 * BORDERWIDTH)
+SPACEBAR_TLY = 605
+
+SPACEBAR_WIDTH = 5 * KEYWIDTH
 
 KEYSRECT = pygame.Rect(XOFFSET - 0.5 * KEYWIDTH, KEYSTARTY - 0.5 * KEYHEIGHT, \
                 10 * (KEYWIDTH + BORDERWIDTH), 3 * (KEYHEIGHT + BORDERWIDTH))
+
+SPACEBARRECT = pygame.Rect(SPACEBAR_TLX, \
+                     SPACEBAR_TLY, \
+                     SPACEBAR_WIDTH + 2 * BORDERWIDTH, \
+                     KEYHEIGHT + 2 * BORDERWIDTH)
 
 suggestionRect = [pygame.Rect(OTHERRECT_L[i] - BORDERWIDTH, \
                                         OTHERRECT_T - BORDERWIDTH, \
@@ -76,11 +131,19 @@ qwertyString = "QWERTYUIOPASDFGHJKLZXCVBNM"
 
 bspace = u"⌫"
 
+adjacentKeys = {"Q":"WSA", "W":"QEDSA", "E":"WRFDS", "R":"ETDFG", "T":"RYFGH", \
+                "Y":"TUGHJ", "U":"YIHJK", "I":"UOJKL", "O":"IPKL", \
+                "P":"OL", "A":"QWSXZ", "S":"QWEADZXC", "D":"WERSFXCV", \
+                "F":"ERTDGCVB", "G":"RTYFHVBN", "H":"TYUGJBNM", "J":"YUIHKBNM", "K":"UIOJLM", \
+                "L":"IOPKM", "Z":"ASX", "X":"ASDZC", "C":"SDFXV", "V":"DFGCB", "B":"FGHVN", "N":"GHJBM", "M":"JKLN"}
+
+backSpaceAdjacent = ["p"]
+spaceBarAdjacent = ["xcvbnm"]
+
 qwertyPositions = [(XOFFSET + x * (KEYWIDTH + 2 * BORDERWIDTH), KEYSTARTY) \
                    for x in range(10)]
 
-BACKSPACEX, BACKSPACEY = XOFFSET + 9 * (KEYWIDTH + 2 * BORDERWIDTH) \
-                                 + 1.25 * KEYWIDTH + 2 * BORDERWIDTH, KEYSTARTY
+BACKSPACEX, BACKSPACEY = 1275, KEYSTARTY
 
 BACKSPACERECT = pygame.Rect(BACKSPACEX - 0.75 * KEYWIDTH - BORDERWIDTH, \
                             BACKSPACEY - 0.75 * KEYHEIGHT - BORDERWIDTH, \
@@ -102,8 +165,8 @@ oldWE = [-1]
 otherChoices = []
 oldOC = [-1]
 
-log1 = open("log1_" + str(int(time.time())) + "_.log", "w")
-log2 = open("log2_" + str(int(time.time())) + "_.log", "w")
+# log1 = open("log1_" + str(int(time.time())) + "_.log", "w")
+# log2 = open("log2_" + str(int(time.time())) + "_.log", "w")
 
 # White BG
 windowSurface.fill(WHITE)
@@ -133,6 +196,31 @@ def drawSuggestionText():
             pygame.display.update(suggestionRect[i])
 
 
+def updatePhraseText():
+    phraseEntryTimes.append(time.time() - experimentStartTime)
+    pygame.draw.rect(windowSurface, BLACK, \
+                    (PHRASERECT_L - BORDERWIDTH, \
+                     PHRASERECT_T - BORDERWIDTH, \
+                     PHRASERECT_WIDTH + 2 * BORDERWIDTH, \
+                     PHRASERECT_HEIGHT + 2 * BORDERWIDTH))
+
+    pygame.draw.rect(windowSurface, WHITE, \
+            (PHRASERECT_L, PHRASERECT_T, PHRASERECT_WIDTH, PHRASERECT_HEIGHT))
+    # Input text
+    text = inputFont.render(phrasesToEnter[-1], True, BLACK)
+    textRect = text.get_rect()
+
+    textRect.x = PHRASERECT_L + BORDERWIDTH
+    textRect.y = PHRASERECT_T + BORDERWIDTH
+
+    windowSurface.blit(text, textRect)
+
+    pygame.display.update(pygame.Rect(PHRASERECT_L - BORDERWIDTH, \
+                                      PHRASERECT_T - BORDERWIDTH, \
+                                      PHRASERECT_WIDTH + 2 * BORDERWIDTH, \
+                                      PHRASERECT_HEIGHT + 2 * BORDERWIDTH))
+
+
 def drawUpperText():
     global wordsEntered, oldWE
     if wordsEntered != oldWE:
@@ -146,7 +234,7 @@ def drawUpperText():
         pygame.draw.rect(windowSurface, WHITE, \
                 (INPUTRECT_L, INPUTRECT_T, INPUTRECT_WIDTH, INPUTRECT_HEIGHT))
         # Input text
-        text = inputFont.render(" ".join(wordsEntered), True, BLACK)
+        text = inputFont.render("_".join(wordsEntered), True, BLACK)
         textRect = text.get_rect()
 
         textRect.x = INPUTRECT_L + BORDERWIDTH
@@ -194,6 +282,27 @@ def drawAllKeys():
         windowSurface.blit(text, textRect)
 
 
+def drawSpaceBar(over=False):
+    if mode in [WII_BASIC, KIN_BASIC]:
+        text = basicFont.render("Space", True, WHITE)
+        textRect = text.get_rect()
+        textRect.centerx, textRect.centery = SPACEBAR_TLX + SPACEBAR_WIDTH / 2. + BORDERWIDTH, \
+                                                SPACEBAR_TLY + KEYHEIGHT / 2. + BORDERWIDTH
+        pygame.draw.rect(windowSurface, BLACK, \
+                         (SPACEBAR_TLX, \
+                         SPACEBAR_TLY, \
+                         SPACEBAR_WIDTH + 2 * BORDERWIDTH, \
+                         KEYHEIGHT + 2 * BORDERWIDTH))
+
+        pygame.draw.rect(windowSurface, GREY if over else RED, \
+                         (SPACEBAR_TLX + BORDERWIDTH, \
+                         SPACEBAR_TLY + BORDERWIDTH, \
+                         SPACEBAR_WIDTH, \
+                         KEYHEIGHT))
+        windowSurface.blit(text, textRect)
+        pygame.display.update(SPACEBARRECT)
+
+
 def drawBackSpace(over=False):
     text = backSpaceFont.render("<--Backspace", True, WHITE)
     textRect = text.get_rect()
@@ -219,12 +328,19 @@ def drawBackSpace(over=False):
 
 def highlightKeys():
     global oldhi, hi
+
+    redrawKeys = []
+    if hi != -1:
+        redrawKeys = [ord(x) - 65 for x in adjacentKeys[chr(65 + hi)]]
     if oldhi != -1:
-        text = keys[oldhi]
+        redrawKeys += [oldhi]
+
+    for key in redrawKeys:
+        text = keys[key]
         textRect = text.get_rect()
         # move em to right spot
         textRect.centerx, textRect.centery = qwertyPositions[\
-                                            qwertyString.find(chr(65 + oldhi))]
+                                            qwertyString.find(chr(65 + key))]
 
         # draw a rect around them
         pygame.draw.rect(windowSurface, BLACK, \
@@ -293,7 +409,7 @@ def drawScreen(rect=None):
     highlightKeys()
 
     stime = time.time() - stime
-    log1.write(str(stime) + "\n")
+    # log1.write(str(stime) + "\n")
 
 
 def QwertyOrd(char):
@@ -325,8 +441,9 @@ class FrameData:
     def updateQwertyInfo(self):
         distances = [Dist(self.position, p) for p in qwertyPositions]
         minDistIndex = np.argmin(distances)
-        self.closestLetter = qwertyString[minDistIndex]
-        self.letterDistance = distances[minDistIndex]
+        if 0 <= minDistIndex < len(qwertyString):
+            self.closestLetter = qwertyString[minDistIndex]
+            self.letterDistance = distances[minDistIndex]
 
     def getClosestLetter(self):
         return self.closestLetter
@@ -361,10 +478,28 @@ drawAllKeys()
 pygame.display.update()
 
 drawBackSpace()
+drawSpaceBar()
+
 
 def close():
-    log1.close()
-    log2.close()
+    f1 = open(logDir + "log_Mouse_" + partName + "_" + str(experimentStartTime) + "_" + textmode + "_.log", 'w')
+    f1.write("\n".join([" ".join([str(y) for y in x]) for x in mouseLog]))
+    f1.close()
+
+    f1 = open(logDir + "log_WETimes_" + partName + "_" + str(experimentStartTime) + "_" + textmode + "_.log", 'w')
+    f1.writelines("\n".join([str(x) for x in wordEntryTimes]))
+    f1.close()
+
+    f1 = open(logDir + "log_PETimes_" + partName + "_" + str(experimentStartTime) + "_" + textmode + "_.log", 'w')
+    f1.writelines("\n".join([str(x) for x in phraseEntryTimes]))
+    f1.close()
+
+    f1 = open(logDir + "log_AllWords_" + partName + "_" + str(experimentStartTime) + "_" + textmode + "_.log", 'w')
+    f1.writelines("\n".join([str(x) for x in totalWordsEntered]))
+    f1.close()
+
+    # log1.close()
+    # log2.close()
     pygame.quit()
     sys.exit()
 
@@ -379,16 +514,19 @@ def work(trajectory):
     global wordsEntered, otherChoices
     stime = time.time()
     otherChoices = ["", "", ""]
-    if len(trajectory.GetLetterSequence()) == 1:
-        wordsEntered.append(trajectory.GetLetterSequence())
+    if len(set(str(trajectory))) == 1:
+        wordsEntered.append(list(set(str(trajectory)))[0])
     else:
         top4 = analysis.AnalyzeTrajectory(trajectory)
         if len(top4) != 0:
             wordsEntered.append(top4[0])
+            wordEntryTimes.append(time.time() - experimentStartTime)
+            totalWordsEntered.append(wordsEntered[-1])
         for i, x in enumerate(top4[1:]):
             otherChoices[i] = x
+
     drawSuggestionText()
-    log2.write(str(time.time() - stime) + "\n")
+    # log2.write(str(time.time() - stime) + "\n")
     drawScreen()
 
 
@@ -413,53 +551,176 @@ def checkMouseClickSuggestion((x, y)):
             drawUpperText()
             drawSuggestionText()
 
+
+def startExperiment():
+    global experimentRunning, experimentStartTime, wordsEntered, otherChoices
+
+    experimentRunning = True
+    experimentStartTime = time.time()
+    wordsEntered = []
+    otherChoices = ["", "", ""]
+    drawUpperText()
+    drawSuggestionText()
+    for _ in range(NUM_PHRASES_PER_TRIAL):
+        phrasesToEnter.append(phrases[random.randint(0, len(phrases) - 1)])
+    print phrasesToEnter
+    updatePhraseText()
+
+
+def pathStart():
+    global trajectory, event, linesToDraw, drawPath
+    trajectory = None
+    linesToDraw = [event.pos]
+    drawPath = True
+    trajectory = SwypeTrajectory("")
+    trajectory.AddFrame(event.pos)
+    if experimentRunning:
+        mouseLog.append(["MouseDown-Keys", event.pos[0], event.pos[1], drawPath])
+
+
+def pathEnd():
+    global trajectory, event, linesToDraw, drawPath
+    if trajectory != None:
+        print "mbu " + str(trajectory)
+        drawPath = False
+        linesToDraw = []
+        work(trajectory)
+        drawAllKeys()
+        pygame.display.update(KEYSRECT)
+        if experimentRunning:
+            mouseLog.append(["MouseUp-GoodTraj", event.pos[0], event.pos[1], drawPath])
+    else:
+        if experimentRunning:
+            mouseLog.append(["MouseUp-BadTraj", event.pos[0], event.pos[1], drawPath])
+
+
+def singleClick():
+    # BOOBS
+    global event
+    mx, my = event.pos
+    key = keyCollision(mx, my)
+    if key is None:
+        return
+
+    key = chr(65 + key)
+
+    if len(wordsEntered) == 0:
+        wordsEntered.append(key)
+    else:
+        wordsEntered[-1] += key
+
+    drawUpperText()
+
 # run the game loop
+spaceBarDown = False
 trajectory = None
 
-clock = pygame.time.Clock()
-
-print keyBounds
-
+rightClickTimeStamp = 0
+mx, my = 0, 0
 while True:
     event = pygame.event.poll()
+
+    mouseState = pygame.mouse.get_pressed()
+    if mouseState[-1] == 0 and rightClickTimeStamp != 0:
+        print "got one!"
+        rightClickTimeStamp = 0
+
+    if rightClickTimeStamp > 0:
+        ts = time.time()
+        rect = pygame.Rect(mx - 25, my - 25, 50, 50)
+        if (ts - rightClickTimeStamp) * 2 > 1:
+            rightClickTimeStamp = 0
+        else:
+            finAngle = (ts - rightClickTimeStamp) * 4 * math.pi
+            # mx, my = event.pos
+            pygame.draw.arc(windowSurface, GREEN, rect, 0, finAngle, 15)
+        pygame.display.update(rect)
+
     if event.type == pygame.locals.QUIT or \
         (event.type == pygame.locals.KEYDOWN and event.key == pygame.K_ESCAPE):
         close()
     elif event.type == pygame.locals.KEYDOWN and event.key == pygame.K_u:
         pygame.display.update()
+    elif event.type == pygame.locals.KEYDOWN and event.key == pygame.K_s \
+            and not experimentRunning:
+        startExperiment()
     elif event.type == pygame.locals.MOUSEBUTTONDOWN:
-        trajectory = None
+        mouseState = pygame.mouse.get_pressed()
+        if mouseState[-1] == 0 and rightClickTimeStamp != 0:
+            print "got one!"
+            rightClickTimeStamp = 0
+
+        # we have three different modes.
+        # one avec click and drag (wii swype)
+        # one where click does peck input (wii basic and kinect basic)
+        # and one wehre swypes are deliminited by clicks (kinect swype)
         if mouseInKBRange(event.pos):
-            linesToDraw = [event.pos]
-            drawPath = True
-            trajectory = SwypeTrajectory("training/trajectory" + \
-                            re.sub(r' ', r'_', str(datetime.datetime.now())))
-            trajectory.AddFrame(event.pos)
+            if mode == WII_SWYPE:
+                print "WWIIIII"
+                print drawPath
+                pathStart()
+                print drawPath
+                print "--"
+            elif mode == KIN_SWYPE:
+                if mouseState[0] == 1:
+                    if drawPath:
+                        pathEnd()
+                    else:
+                        pathStart()
+                elif mouseState[-1] == 1:
+                    # right click
+                    if rightClickTimeStamp == 0:
+                        rightClickTimeStamp = time.time()
+            else:
+                singleClick()
         elif BACKSPACERECT.collidepoint(event.pos):
-            if len(wordsEntered) > 0:
-                wordsEntered.pop()
-                otherChoices = ["", "", ""]
+            if pygame.mouse.get_pressed() == (0, 0, 1): continue
+            if mode in [KIN_SWYPE, WII_SWYPE]:
+                if len(wordsEntered) > 0:
+                    wordsEntered.pop()
+                    otherChoices = ["", "", ""]
+                    drawUpperText()
+                    drawSuggestionText()
+            else:
+                if len(wordsEntered) > 0:
+                    if len(wordsEntered[-1]) == 0:
+                        wordsEntered.pop()
+                        drawUpperText()
+                    else:
+                        wordsEntered[-1] = wordsEntered[-1][:-1]
+                        drawUpperText()
+            if experimentRunning:
+                mouseLog.append(["MouseDown-BACKSPACE", event.pos[0], event.pos[1], drawPath])
+        elif SPACEBARRECT.collidepoint(event.pos):
+            if pygame.mouse.get_pressed() == (0, 0, 1): continue
+            if mode in [WII_BASIC, KIN_BASIC]:
+                wordsEntered.append("")
                 drawUpperText()
-                drawSuggestionText()
         else:
+            if pygame.mouse.get_pressed() == (0, 0, 1): continue
             checkMouseClickSuggestion(event.pos)
+            if experimentRunning:
+                mouseLog.append(["MouseDown-ElseWhere", event.pos[0], event.pos[1], drawPath])
     elif event.type == pygame.locals.MOUSEBUTTONUP:
-        if trajectory != None:
-            print "mbu" + str(trajectory)
-            drawPath = False
-            linesToDraw = []
-            work(trajectory)
-            drawAllKeys()
-            pygame.display.update(KEYSRECT)
+        if mode == WII_SWYPE and drawPath:
+            pathEnd()
 
     elif event.type == pygame.locals.MOUSEMOTION:
         mx, my = event.pos
+        if experimentRunning:
+                mouseLog.append(["MouseMove", event.pos[0], event.pos[1], drawPath])
         kc = keyCollision(mx, my)
         if BACKSPACERECT.collidepoint(event.pos):
             drawBackSpace(True)
             backSpaceDrawn = True
         elif backSpaceDrawn:
             drawBackSpace(False)
+
+        if SPACEBARRECT.collidepoint(event.pos):
+            drawSpaceBar(True)
+            spaceBarDown = True
+        elif spaceBarDown:
+            drawSpaceBar(False)
 
         if kc == None:
             # print "KC = NONE with mx,my = " + str(mx) + ", " + str(my)
@@ -468,3 +729,19 @@ while True:
         if drawPath:
             linesToDraw.append(event.pos)
             trajectory.AddFrame(event.pos)
+
+    if experimentRunning and " ".join(wordsEntered) == phrasesToEnter[-1]:
+        if len(phrasesToEnter) > 1:
+            phrasesToEnter.pop()
+            updatePhraseText()
+            wordsEntered = []
+            otherChoices = ["", "", ""]
+            drawUpperText()
+            drawSuggestionText()
+        else:
+            phraseEntryTimes.append(time.time() - experimentStartTime)
+            wordsEntered = ["You", "Are", "Done!"]
+            otherChoices = ["", "", ""]
+            drawUpperText()
+            drawSuggestionText()
+            experimentRunning = False
